@@ -1,0 +1,10 @@
+
+body{
+  font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: rgb(164, 164, 228);
+}
+fieldset{
+  background-color: rgb(212, 212, 239);
+  border-color: rgb(0, 0, 0);
+  border-radius: 5px;
+}
