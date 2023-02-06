@@ -1,0 +1,40 @@
+
+#orderForm{
+    border-width: 1px;
+    border-style: solid;
+    border-color: rgb(87, 206, 32);
+    border-radius: 20px;
+    background-color: rgb(87, 206, 32);
+    font-family: Arial, Helvetica, sans-serif;
+}
+div{
+    padding: 6px;
+}
+#purchaseButton{
+    border-width: 1px;
+    border-style: solid;
+    border-color: rgb(87, 206, 32);
+    border-radius: 20px;
+    background-color: rgb(87, 206, 32);
+}
+#address{
+    background-color: rgb(232, 232, 232);
+}
+#form{
+    background-color: white;
+    padding-top: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    border-bottom-left-radius: 15px;
+    border-bottom-right-radius: 15px;
+}
+#info{
+    border-width: 1px;
+    border-color: black;
+    border-style: solid;
+    padding: 5px;
+    margin-top: 10px;
+}
+fieldset{
+    border-color: white;
+}

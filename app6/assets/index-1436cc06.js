@@ -104,6 +104,54 @@ const isSpecialBooleanAttr = /* @__PURE__ */ makeMap(specialBooleanAttrs);
 function includeBooleanAttr(value) {
   return !!value || value === "";
 }
+function looseCompareArrays(a, b) {
+  if (a.length !== b.length)
+    return false;
+  let equal = true;
+  for (let i = 0; equal && i < a.length; i++) {
+    equal = looseEqual(a[i], b[i]);
+  }
+  return equal;
+}
+function looseEqual(a, b) {
+  if (a === b)
+    return true;
+  let aValidType = isDate(a);
+  let bValidType = isDate(b);
+  if (aValidType || bValidType) {
+    return aValidType && bValidType ? a.getTime() === b.getTime() : false;
+  }
+  aValidType = isSymbol(a);
+  bValidType = isSymbol(b);
+  if (aValidType || bValidType) {
+    return a === b;
+  }
+  aValidType = isArray(a);
+  bValidType = isArray(b);
+  if (aValidType || bValidType) {
+    return aValidType && bValidType ? looseCompareArrays(a, b) : false;
+  }
+  aValidType = isObject(a);
+  bValidType = isObject(b);
+  if (aValidType || bValidType) {
+    if (!aValidType || !bValidType) {
+      return false;
+    }
+    const aKeysCount = Object.keys(a).length;
+    const bKeysCount = Object.keys(b).length;
+    if (aKeysCount !== bKeysCount) {
+      return false;
+    }
+    for (const key in a) {
+      const aHasKey = a.hasOwnProperty(key);
+      const bHasKey = b.hasOwnProperty(key);
+      if (aHasKey && !bHasKey || !aHasKey && bHasKey || !looseEqual(a[key], b[key])) {
+        return false;
+      }
+    }
+  }
+  return String(a) === String(b);
+}
 const toDisplayString = (val) => {
   return isString(val) ? val : val == null ? "" : isArray(val) || isObject(val) && (val.toString === objectToString || !isFunction(val.toString)) ? JSON.stringify(val, replacer, 2) : String(val);
 };
@@ -146,6 +194,7 @@ const hasOwn = (val, key) => hasOwnProperty$1.call(val, key);
 const isArray = Array.isArray;
 const isMap = (val) => toTypeString(val) === "[object Map]";
 const isSet = (val) => toTypeString(val) === "[object Set]";
+const isDate = (val) => toTypeString(val) === "[object Date]";
 const isFunction = (val) => typeof val === "function";
 const isString = (val) => typeof val === "string";
 const isSymbol = (val) => typeof val === "symbol";
@@ -1023,17 +1072,17 @@ function markRaw(value) {
 }
 const toReactive = (value) => isObject(value) ? reactive(value) : value;
 const toReadonly = (value) => isObject(value) ? readonly(value) : value;
-function trackRefValue(ref) {
+function trackRefValue(ref2) {
   if (shouldTrack && activeEffect) {
-    ref = toRaw(ref);
+    ref2 = toRaw(ref2);
     {
-      trackEffects(ref.dep || (ref.dep = createDep()));
+      trackEffects(ref2.dep || (ref2.dep = createDep()));
     }
   }
 }
-function triggerRefValue(ref, newVal) {
-  ref = toRaw(ref);
-  const dep = ref.dep;
+function triggerRefValue(ref2, newVal) {
+  ref2 = toRaw(ref2);
+  const dep = ref2.dep;
   if (dep) {
     {
       triggerEffects(dep);
@@ -1043,8 +1092,39 @@ function triggerRefValue(ref, newVal) {
 function isRef(r) {
   return !!(r && r.__v_isRef === true);
 }
-function unref(ref) {
-  return isRef(ref) ? ref.value : ref;
+function ref(value) {
+  return createRef(value, false);
+}
+function createRef(rawValue, shallow) {
+  if (isRef(rawValue)) {
+    return rawValue;
+  }
+  return new RefImpl(rawValue, shallow);
+}
+class RefImpl {
+  constructor(value, __v_isShallow) {
+    this.__v_isShallow = __v_isShallow;
+    this.dep = void 0;
+    this.__v_isRef = true;
+    this._rawValue = __v_isShallow ? value : toRaw(value);
+    this._value = __v_isShallow ? value : toReactive(value);
+  }
+  get value() {
+    trackRefValue(this);
+    return this._value;
+  }
+  set value(newVal) {
+    const useDirectValue = this.__v_isShallow || isShallow(newVal) || isReadonly(newVal);
+    newVal = useDirectValue ? newVal : toRaw(newVal);
+    if (hasChanged(newVal, this._rawValue)) {
+      this._rawValue = newVal;
+      this._value = useDirectValue ? newVal : toReactive(newVal);
+      triggerRefValue(this);
+    }
+  }
+}
+function unref(ref2) {
+  return isRef(ref2) ? ref2.value : ref2;
 }
 const shallowUnwrapHandlers = {
   get: (target, key, receiver) => unref(Reflect.get(target, key, receiver)),
@@ -1385,12 +1465,6 @@ function setCurrentRenderingInstance(instance) {
   currentRenderingInstance = instance;
   currentScopeId = instance && instance.type.__scopeId || null;
   return prev;
-}
-function pushScopeId(id) {
-  currentScopeId = id;
-}
-function popScopeId() {
-  currentScopeId = null;
 }
 function withCtx(fn, ctx = currentRenderingInstance, isNonScopedSlot) {
   if (!ctx)
@@ -2190,6 +2264,37 @@ const onRenderTracked = createHook(
 function onErrorCaptured(hook, target = currentInstance) {
   injectHook("ec", hook, target);
 }
+function withDirectives(vnode, directives) {
+  const internalInstance = currentRenderingInstance;
+  if (internalInstance === null) {
+    return vnode;
+  }
+  const instance = getExposeProxy(internalInstance) || internalInstance.proxy;
+  const bindings = vnode.dirs || (vnode.dirs = []);
+  for (let i = 0; i < directives.length; i++) {
+    let [dir, value, arg, modifiers = EMPTY_OBJ] = directives[i];
+    if (dir) {
+      if (isFunction(dir)) {
+        dir = {
+          mounted: dir,
+          updated: dir
+        };
+      }
+      if (dir.deep) {
+        traverse(value);
+      }
+      bindings.push({
+        dir,
+        instance,
+        value,
+        oldValue: void 0,
+        arg,
+        modifiers
+      });
+    }
+  }
+  return vnode;
+}
 function invokeDirectiveHook(vnode, prevVNode, instance, name) {
   const bindings = vnode.dirs;
   const oldBindings = prevVNode && prevVNode.dirs;
@@ -2212,48 +2317,6 @@ function invokeDirectiveHook(vnode, prevVNode, instance, name) {
   }
 }
 const NULL_DYNAMIC_COMPONENT = Symbol();
-function renderSlot(slots, name, props = {}, fallback, noSlotted) {
-  if (currentRenderingInstance.isCE || currentRenderingInstance.parent && isAsyncWrapper(currentRenderingInstance.parent) && currentRenderingInstance.parent.isCE) {
-    if (name !== "default")
-      props.name = name;
-    return createVNode("slot", props, fallback && fallback());
-  }
-  let slot = slots[name];
-  if (slot && slot._c) {
-    slot._d = false;
-  }
-  openBlock();
-  const validSlotContent = slot && ensureValidVNode(slot(props));
-  const rendered = createBlock(
-    Fragment,
-    {
-      key: props.key || // slot content array of a dynamic conditional slot may have a branch
-      // key attached in the `createSlots` helper, respect that
-      validSlotContent && validSlotContent.key || `_${name}`
-    },
-    validSlotContent || (fallback ? fallback() : []),
-    validSlotContent && slots._ === 1 ? 64 : -2
-    /* PatchFlags.BAIL */
-  );
-  if (!noSlotted && rendered.scopeId) {
-    rendered.slotScopeIds = [rendered.scopeId + "-s"];
-  }
-  if (slot && slot._c) {
-    slot._d = true;
-  }
-  return rendered;
-}
-function ensureValidVNode(vnodes) {
-  return vnodes.some((child) => {
-    if (!isVNode(child))
-      return true;
-    if (child.type === Comment)
-      return false;
-    if (child.type === Fragment && !ensureValidVNode(child.children))
-      return false;
-    return true;
-  }) ? vnodes : null;
-}
 const getPublicInstance = (i) => {
   if (!i)
     return null;
@@ -3173,11 +3236,11 @@ function setRef(rawRef, oldRawRef, parentSuspense, vnode, isUnmount = false) {
   }
   const refValue = vnode.shapeFlag & 4 ? getExposeProxy(vnode.component) || vnode.component.proxy : vnode.el;
   const value = isUnmount ? null : refValue;
-  const { i: owner, r: ref } = rawRef;
+  const { i: owner, r: ref2 } = rawRef;
   const oldRef = oldRawRef && oldRawRef.r;
   const refs = owner.refs === EMPTY_OBJ ? owner.refs = {} : owner.refs;
   const setupState = owner.setupState;
-  if (oldRef != null && oldRef !== ref) {
+  if (oldRef != null && oldRef !== ref2) {
     if (isString(oldRef)) {
       refs[oldRef] = null;
       if (hasOwn(setupState, oldRef)) {
@@ -3187,40 +3250,40 @@ function setRef(rawRef, oldRawRef, parentSuspense, vnode, isUnmount = false) {
       oldRef.value = null;
     }
   }
-  if (isFunction(ref)) {
-    callWithErrorHandling(ref, owner, 12, [value, refs]);
+  if (isFunction(ref2)) {
+    callWithErrorHandling(ref2, owner, 12, [value, refs]);
   } else {
-    const _isString = isString(ref);
-    const _isRef = isRef(ref);
+    const _isString = isString(ref2);
+    const _isRef = isRef(ref2);
     if (_isString || _isRef) {
       const doSet = () => {
         if (rawRef.f) {
-          const existing = _isString ? hasOwn(setupState, ref) ? setupState[ref] : refs[ref] : ref.value;
+          const existing = _isString ? hasOwn(setupState, ref2) ? setupState[ref2] : refs[ref2] : ref2.value;
           if (isUnmount) {
             isArray(existing) && remove(existing, refValue);
           } else {
             if (!isArray(existing)) {
               if (_isString) {
-                refs[ref] = [refValue];
-                if (hasOwn(setupState, ref)) {
-                  setupState[ref] = refs[ref];
+                refs[ref2] = [refValue];
+                if (hasOwn(setupState, ref2)) {
+                  setupState[ref2] = refs[ref2];
                 }
               } else {
-                ref.value = [refValue];
+                ref2.value = [refValue];
                 if (rawRef.k)
-                  refs[rawRef.k] = ref.value;
+                  refs[rawRef.k] = ref2.value;
               }
             } else if (!existing.includes(refValue)) {
               existing.push(refValue);
             }
           }
         } else if (_isString) {
-          refs[ref] = value;
-          if (hasOwn(setupState, ref)) {
-            setupState[ref] = value;
+          refs[ref2] = value;
+          if (hasOwn(setupState, ref2)) {
+            setupState[ref2] = value;
           }
         } else if (_isRef) {
-          ref.value = value;
+          ref2.value = value;
           if (rawRef.k)
             refs[rawRef.k] = value;
         } else
@@ -3256,7 +3319,7 @@ function baseCreateRenderer(options, createHydrationFns) {
       optimized = false;
       n2.dynamicChildren = null;
     }
-    const { type, ref, shapeFlag } = n2;
+    const { type, ref: ref2, shapeFlag } = n2;
     switch (type) {
       case Text:
         processText(n1, n2, container, anchor);
@@ -3284,8 +3347,8 @@ function baseCreateRenderer(options, createHydrationFns) {
         } else
           ;
     }
-    if (ref != null && parentComponent) {
-      setRef(ref, n1 && n1.ref, parentSuspense, n2 || n1, !n2);
+    if (ref2 != null && parentComponent) {
+      setRef(ref2, n1 && n1.ref, parentSuspense, n2 || n1, !n2);
     }
   };
   const processText = (n1, n2, container, anchor) => {
@@ -3918,9 +3981,9 @@ function baseCreateRenderer(options, createHydrationFns) {
     }
   };
   const unmount = (vnode, parentComponent, parentSuspense, doRemove = false, optimized = false) => {
-    const { type, props, ref, children, dynamicChildren, shapeFlag, patchFlag, dirs } = vnode;
-    if (ref != null) {
-      setRef(ref, null, parentSuspense, vnode, true);
+    const { type, props, ref: ref2, children, dynamicChildren, shapeFlag, patchFlag, dirs } = vnode;
+    if (ref2 != null) {
+      setRef(ref2, null, parentSuspense, vnode, true);
     }
     if (shapeFlag & 256) {
       parentComponent.ctx.deactivate(vnode);
@@ -4174,17 +4237,6 @@ function createElementBlock(type, props, children, patchFlag, dynamicProps, shap
     /* isBlock */
   ));
 }
-function createBlock(type, props, children, patchFlag, dynamicProps) {
-  return setupBlock(createVNode(
-    type,
-    props,
-    children,
-    patchFlag,
-    dynamicProps,
-    true
-    /* isBlock: prevent a block from tracking itself */
-  ));
-}
 function isVNode(value) {
   return value ? value.__v_isVNode === true : false;
 }
@@ -4193,8 +4245,8 @@ function isSameVNodeType(n1, n2) {
 }
 const InternalObjectKey = `__vInternal`;
 const normalizeKey = ({ key }) => key != null ? key : null;
-const normalizeRef = ({ ref, ref_key, ref_for }) => {
-  return ref != null ? isString(ref) || isRef(ref) || isFunction(ref) ? { i: currentRenderingInstance, r: ref, k: ref_key, f: !!ref_for } : ref : null;
+const normalizeRef = ({ ref: ref2, ref_key, ref_for }) => {
+  return ref2 != null ? isString(ref2) || isRef(ref2) || isFunction(ref2) ? { i: currentRenderingInstance, r: ref2, k: ref_key, f: !!ref_for } : ref2 : null;
 };
 function createBaseVNode(type, props = null, children = null, patchFlag = 0, dynamicProps = null, shapeFlag = type === Fragment ? 0 : 1, isBlockNode = false, needFullChildrenNormalization = false) {
   const vnode = {
@@ -4296,7 +4348,7 @@ function guardReactiveProps(props) {
   return isProxy(props) || InternalObjectKey in props ? extend({}, props) : props;
 }
 function cloneVNode(vnode, extraProps, mergeRef = false) {
-  const { props, ref, patchFlag, children } = vnode;
+  const { props, ref: ref2, patchFlag, children } = vnode;
   const mergedProps = extraProps ? mergeProps(props || {}, extraProps) : props;
   const cloned = {
     __v_isVNode: true,
@@ -4308,8 +4360,8 @@ function cloneVNode(vnode, extraProps, mergeRef = false) {
       // #2078 in the case of <component :is="vnode" ref="extra"/>
       // if the vnode itself already has a ref, cloneVNode will need to merge
       // the refs so the single vnode can be set on multiple refs
-      mergeRef && ref ? isArray(ref) ? ref.concat(normalizeRef(extraProps)) : [ref, normalizeRef(extraProps)] : normalizeRef(extraProps)
-    ) : ref,
+      mergeRef && ref2 ? isArray(ref2) ? ref2.concat(normalizeRef(extraProps)) : [ref2, normalizeRef(extraProps)] : normalizeRef(extraProps)
+    ) : ref2,
     scopeId: vnode.scopeId,
     slotScopeIds: vnode.slotScopeIds,
     children,
@@ -5012,6 +5064,90 @@ const DOMTransitionPropsValidators = {
   leaveToClass: String
 };
 /* @__PURE__ */ extend({}, BaseTransition.props, DOMTransitionPropsValidators);
+const getModelAssigner = (vnode) => {
+  const fn = vnode.props["onUpdate:modelValue"] || false;
+  return isArray(fn) ? (value) => invokeArrayFns(fn, value) : fn;
+};
+function onCompositionStart(e) {
+  e.target.composing = true;
+}
+function onCompositionEnd(e) {
+  const target = e.target;
+  if (target.composing) {
+    target.composing = false;
+    target.dispatchEvent(new Event("input"));
+  }
+}
+const vModelText = {
+  created(el, { modifiers: { lazy, trim, number } }, vnode) {
+    el._assign = getModelAssigner(vnode);
+    const castToNumber = number || vnode.props && vnode.props.type === "number";
+    addEventListener(el, lazy ? "change" : "input", (e) => {
+      if (e.target.composing)
+        return;
+      let domValue = el.value;
+      if (trim) {
+        domValue = domValue.trim();
+      }
+      if (castToNumber) {
+        domValue = looseToNumber(domValue);
+      }
+      el._assign(domValue);
+    });
+    if (trim) {
+      addEventListener(el, "change", () => {
+        el.value = el.value.trim();
+      });
+    }
+    if (!lazy) {
+      addEventListener(el, "compositionstart", onCompositionStart);
+      addEventListener(el, "compositionend", onCompositionEnd);
+      addEventListener(el, "change", onCompositionEnd);
+    }
+  },
+  // set value on mounted so it's after min/max for type="range"
+  mounted(el, { value }) {
+    el.value = value == null ? "" : value;
+  },
+  beforeUpdate(el, { value, modifiers: { lazy, trim, number } }, vnode) {
+    el._assign = getModelAssigner(vnode);
+    if (el.composing)
+      return;
+    if (document.activeElement === el && el.type !== "range") {
+      if (lazy) {
+        return;
+      }
+      if (trim && el.value.trim() === value) {
+        return;
+      }
+      if ((number || el.type === "number") && looseToNumber(el.value) === value) {
+        return;
+      }
+    }
+    const newValue = value == null ? "" : value;
+    if (el.value !== newValue) {
+      el.value = newValue;
+    }
+  }
+};
+const vModelRadio = {
+  created(el, { value }, vnode) {
+    el.checked = looseEqual(value, vnode.props.value);
+    el._assign = getModelAssigner(vnode);
+    addEventListener(el, "change", () => {
+      el._assign(getValue(el));
+    });
+  },
+  beforeUpdate(el, { value, oldValue }, vnode) {
+    el._assign = getModelAssigner(vnode);
+    if (value !== oldValue) {
+      el.checked = looseEqual(value, vnode.props.value);
+    }
+  }
+};
+function getValue(el) {
+  return "_value" in el ? el._value : el.value;
+}
 const rendererOptions = /* @__PURE__ */ extend({ patchProp }, nodeOps);
 let renderer;
 function ensureRenderer() {
@@ -5045,366 +5181,243 @@ function normalizeContainer(container) {
   }
   return container;
 }
-const _imports_0 = "/app6NEW/assets/logo-da9b9095.svg";
-const HelloWorld_vue_vue_type_style_index_0_scoped_3ba3ab19_lang = "";
-const _export_sfc = (sfc, props) => {
-  const target = sfc.__vccOpts || sfc;
-  for (const [key, val] of props) {
-    target[key] = val;
-  }
-  return target;
-};
-const _withScopeId$1 = (n) => (pushScopeId("data-v-3ba3ab19"), n = n(), popScopeId(), n);
-const _hoisted_1$8 = { class: "greetings" };
-const _hoisted_2$8 = { class: "green" };
-const _hoisted_3$6 = /* @__PURE__ */ _withScopeId$1(() => /* @__PURE__ */ createBaseVNode("h3", null, [
-  /* @__PURE__ */ createTextVNode(" You’ve successfully created a project with "),
-  /* @__PURE__ */ createBaseVNode("a", {
-    href: "https://vitejs.dev/",
-    target: "_blank",
-    rel: "noopener"
-  }, "Vite"),
-  /* @__PURE__ */ createTextVNode(" + "),
-  /* @__PURE__ */ createBaseVNode("a", {
-    href: "https://vuejs.org/",
-    target: "_blank",
-    rel: "noopener"
-  }, "Vue 3"),
-  /* @__PURE__ */ createTextVNode(". ")
-], -1));
-const _sfc_main$8 = {
-  __name: "HelloWorld",
-  props: {
-    msg: {
-      type: String,
-      required: true
-    }
-  },
+const App_vue_vue_type_style_index_0_lang = "";
+const _hoisted_1 = { id: "orderForm" };
+const _hoisted_2 = /* @__PURE__ */ createBaseVNode("h2", null, "Order Form", -1);
+const _hoisted_3 = /* @__PURE__ */ createBaseVNode("small", null, [
+  /* @__PURE__ */ createBaseVNode("p", null, "Please fill in your information and we'll be sending your order in no time.")
+], -1);
+const _hoisted_4 = { id: "form" };
+const _hoisted_5 = /* @__PURE__ */ createBaseVNode("label", { for: "name" }, "Name", -1);
+const _hoisted_6 = /* @__PURE__ */ createBaseVNode("label", { for: "email" }, "Email", -1);
+const _hoisted_7 = /* @__PURE__ */ createBaseVNode("label", { for: "tshirt" }, "T-short model", -1);
+const _hoisted_8 = ["src"];
+const _hoisted_9 = ["src"];
+const _hoisted_10 = ["src"];
+const _hoisted_11 = /* @__PURE__ */ createBaseVNode("label", { for: "size" }, "Size", -1);
+const _hoisted_12 = /* @__PURE__ */ createBaseVNode("option", null, null, -1);
+const _hoisted_13 = /* @__PURE__ */ createBaseVNode("option", null, "Extra Small ", -1);
+const _hoisted_14 = /* @__PURE__ */ createBaseVNode("option", null, "Small", -1);
+const _hoisted_15 = /* @__PURE__ */ createBaseVNode("option", null, "Medium", -1);
+const _hoisted_16 = /* @__PURE__ */ createBaseVNode("option", null, "Large", -1);
+const _hoisted_17 = /* @__PURE__ */ createBaseVNode("option", null, "Extra Large", -1);
+const _hoisted_18 = [
+  _hoisted_12,
+  _hoisted_13,
+  _hoisted_14,
+  _hoisted_15,
+  _hoisted_16,
+  _hoisted_17
+];
+const _hoisted_19 = /* @__PURE__ */ createBaseVNode("label", { for: "quantity" }, "Quantity", -1);
+const _hoisted_20 = /* @__PURE__ */ createBaseVNode("label", { for: "date" }, "Delivery Date", -1);
+const _hoisted_21 = { id: "address" };
+const _hoisted_22 = /* @__PURE__ */ createBaseVNode("label", { for: "address" }, "Delivery Address", -1);
+const _hoisted_23 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_24 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_25 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_26 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_27 = /* @__PURE__ */ createBaseVNode("div", null, [
+  /* @__PURE__ */ createBaseVNode("input", {
+    id: "purchaseButton",
+    type: "submit",
+    value: "Purchase"
+  })
+], -1);
+const _hoisted_28 = { id: "info" };
+const _hoisted_29 = /* @__PURE__ */ createBaseVNode("h3", null, "Information", -1);
+const _hoisted_30 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_31 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_32 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_33 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_34 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_35 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_36 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_37 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_38 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _sfc_main = {
+  __name: "App",
   setup(__props) {
+    const user = reactive({
+      nameFirst: "",
+      nameLast: "",
+      email: "",
+      model: "",
+      size: "",
+      quantity: "",
+      date: "",
+      street1: "",
+      street2: "",
+      city: "",
+      zip: ""
+    });
+    ref("shirtGreen.PNG");
+    const shirtOrangeImg = ref("shirtOrange.PNG");
+    const shirtBlueImg = ref("shirtBlue.PNG");
     return (_ctx, _cache) => {
-      return openBlock(), createElementBlock("div", _hoisted_1$8, [
-        createBaseVNode("h1", _hoisted_2$8, toDisplayString(__props.msg), 1),
-        _hoisted_3$6
+      return openBlock(), createElementBlock("body", null, [
+        createBaseVNode("div", _hoisted_1, [
+          _hoisted_2,
+          _hoisted_3,
+          createBaseVNode("div", _hoisted_4, [
+            createBaseVNode("div", null, [
+              _hoisted_5,
+              withDirectives(createBaseVNode("input", {
+                id: "first",
+                type: "text",
+                "onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => user.nameFirst = $event),
+                required: ""
+              }, null, 512), [
+                [vModelText, user.nameFirst]
+              ]),
+              withDirectives(createBaseVNode("input", {
+                id: "last",
+                type: "text",
+                "onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => user.nameLast = $event),
+                required: ""
+              }, null, 512), [
+                [vModelText, user.nameLast]
+              ])
+            ]),
+            createBaseVNode("div", null, [
+              _hoisted_6,
+              withDirectives(createBaseVNode("input", {
+                id: "email",
+                type: "email",
+                "onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => user.email = $event),
+                required: ""
+              }, null, 512), [
+                [vModelText, user.email]
+              ])
+            ]),
+            createBaseVNode("div", null, [
+              _hoisted_7,
+              createBaseVNode("input", {
+                id: "tshirtGreen",
+                name: "tshirt",
+                type: "radio",
+                value: "Green",
+                onInput: _cache[3] || (_cache[3] = (event) => user.model = event.target.value),
+                required: ""
+              }, null, 32),
+              createBaseVNode("img", { src: _ctx.tshirtGreenImg }, null, 8, _hoisted_8),
+              withDirectives(createBaseVNode("input", {
+                id: "tshirtOrange",
+                name: "tshirt",
+                type: "radio",
+                value: "Orange",
+                "onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => user.model = $event),
+                required: ""
+              }, null, 512), [
+                [vModelRadio, user.model]
+              ]),
+              createBaseVNode("img", { src: shirtOrangeImg.value }, null, 8, _hoisted_9),
+              withDirectives(createBaseVNode("input", {
+                id: "tshirtBlue",
+                name: "tshirt",
+                type: "radio",
+                value: "Blue",
+                "onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => user.model = $event),
+                required: ""
+              }, null, 512), [
+                [vModelRadio, user.model]
+              ]),
+              createBaseVNode("img", { src: shirtBlueImg.value }, null, 8, _hoisted_10)
+            ]),
+            createBaseVNode("div", null, [
+              _hoisted_11,
+              createBaseVNode("select", {
+                name: "size",
+                onInput: _cache[6] || (_cache[6] = (event) => user.size = event.target.value),
+                required: ""
+              }, _hoisted_18, 32)
+            ]),
+            createBaseVNode("div", null, [
+              _hoisted_19,
+              createBaseVNode("input", {
+                name: "quantity",
+                type: "number",
+                min: "1",
+                max: "100",
+                onInput: _cache[7] || (_cache[7] = (event) => user.quantity = event.target.value),
+                required: ""
+              }, null, 32)
+            ]),
+            createBaseVNode("div", null, [
+              _hoisted_20,
+              createBaseVNode("input", {
+                name: "date",
+                type: "date",
+                onInput: _cache[8] || (_cache[8] = (event) => user.date = event.target.value),
+                required: ""
+              }, null, 32)
+            ]),
+            createBaseVNode("div", _hoisted_21, [
+              _hoisted_22,
+              _hoisted_23,
+              withDirectives(createBaseVNode("input", {
+                id: "street1",
+                placeholder: "Street Address",
+                required: "",
+                "onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => user.street1 = $event)
+              }, null, 512), [
+                [vModelText, user.street1]
+              ]),
+              _hoisted_24,
+              withDirectives(createBaseVNode("input", {
+                id: "street2",
+                placeholder: "Street Address Line 2",
+                "onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => user.street2 = $event)
+              }, null, 512), [
+                [vModelText, user.street2]
+              ]),
+              _hoisted_25,
+              withDirectives(createBaseVNode("input", {
+                id: "city",
+                placeholder: "City",
+                "onUpdate:modelValue": _cache[11] || (_cache[11] = ($event) => user.city = $event),
+                required: ""
+              }, null, 512), [
+                [vModelText, user.city]
+              ]),
+              _hoisted_26,
+              withDirectives(createBaseVNode("input", {
+                id: "zip",
+                placeholder: "Postal / Zip Code",
+                "onUpdate:modelValue": _cache[12] || (_cache[12] = ($event) => user.zip = $event),
+                required: ""
+              }, null, 512), [
+                [vModelText, user.zip]
+              ])
+            ]),
+            _hoisted_27
+          ])
+        ]),
+        createBaseVNode("div", _hoisted_28, [
+          _hoisted_29,
+          createBaseVNode("span", null, "Name: " + toDisplayString(user.nameFirst) + " " + toDisplayString(user.nameLast), 1),
+          _hoisted_30,
+          createBaseVNode("span", null, "Email: " + toDisplayString(user.email), 1),
+          _hoisted_31,
+          createBaseVNode("span", null, "T-shirt Type: " + toDisplayString(user.model), 1),
+          _hoisted_32,
+          createBaseVNode("span", null, "Size: " + toDisplayString(user.size), 1),
+          _hoisted_33,
+          createBaseVNode("span", null, "Quantity: " + toDisplayString(user.quantity), 1),
+          _hoisted_34,
+          createBaseVNode("span", null, "Delivery Date: " + toDisplayString(user.date), 1),
+          _hoisted_35,
+          createBaseVNode("span", null, "Address: " + toDisplayString(user.street1), 1),
+          _hoisted_36,
+          createBaseVNode("span", null, "Address 2: " + toDisplayString(user.street2), 1),
+          _hoisted_37,
+          createBaseVNode("span", null, "City: " + toDisplayString(user.city), 1),
+          _hoisted_38,
+          createBaseVNode("span", null, "Zip: " + toDisplayString(user.zip), 1)
+        ])
       ]);
     };
   }
 };
-const HelloWorld = /* @__PURE__ */ _export_sfc(_sfc_main$8, [["__scopeId", "data-v-3ba3ab19"]]);
-const WelcomeItem_vue_vue_type_style_index_0_scoped_f1b0f727_lang = "";
-const _sfc_main$7 = {};
-const _hoisted_1$7 = { class: "item" };
-const _hoisted_2$7 = { class: "details" };
-function _sfc_render$5(_ctx, _cache) {
-  return openBlock(), createElementBlock("div", _hoisted_1$7, [
-    createBaseVNode("i", null, [
-      renderSlot(_ctx.$slots, "icon", {}, void 0, true)
-    ]),
-    createBaseVNode("div", _hoisted_2$7, [
-      createBaseVNode("h3", null, [
-        renderSlot(_ctx.$slots, "heading", {}, void 0, true)
-      ]),
-      renderSlot(_ctx.$slots, "default", {}, void 0, true)
-    ])
-  ]);
-}
-const WelcomeItem = /* @__PURE__ */ _export_sfc(_sfc_main$7, [["render", _sfc_render$5], ["__scopeId", "data-v-f1b0f727"]]);
-const _sfc_main$6 = {};
-const _hoisted_1$6 = {
-  xmlns: "http://www.w3.org/2000/svg",
-  width: "20",
-  height: "17",
-  fill: "currentColor"
-};
-const _hoisted_2$6 = /* @__PURE__ */ createBaseVNode("path", { d: "M11 2.253a1 1 0 1 0-2 0h2zm-2 13a1 1 0 1 0 2 0H9zm.447-12.167a1 1 0 1 0 1.107-1.666L9.447 3.086zM1 2.253L.447 1.42A1 1 0 0 0 0 2.253h1zm0 13H0a1 1 0 0 0 1.553.833L1 15.253zm8.447.833a1 1 0 1 0 1.107-1.666l-1.107 1.666zm0-14.666a1 1 0 1 0 1.107 1.666L9.447 1.42zM19 2.253h1a1 1 0 0 0-.447-.833L19 2.253zm0 13l-.553.833A1 1 0 0 0 20 15.253h-1zm-9.553-.833a1 1 0 1 0 1.107 1.666L9.447 14.42zM9 2.253v13h2v-13H9zm1.553-.833C9.203.523 7.42 0 5.5 0v2c1.572 0 2.961.431 3.947 1.086l1.107-1.666zM5.5 0C3.58 0 1.797.523.447 1.42l1.107 1.666C2.539 2.431 3.928 2 5.5 2V0zM0 2.253v13h2v-13H0zm1.553 13.833C2.539 15.431 3.928 15 5.5 15v-2c-1.92 0-3.703.523-5.053 1.42l1.107 1.666zM5.5 15c1.572 0 2.961.431 3.947 1.086l1.107-1.666C9.203 13.523 7.42 13 5.5 13v2zm5.053-11.914C11.539 2.431 12.928 2 14.5 2V0c-1.92 0-3.703.523-5.053 1.42l1.107 1.666zM14.5 2c1.573 0 2.961.431 3.947 1.086l1.107-1.666C18.203.523 16.421 0 14.5 0v2zm3.5.253v13h2v-13h-2zm1.553 12.167C18.203 13.523 16.421 13 14.5 13v2c1.573 0 2.961.431 3.947 1.086l1.107-1.666zM14.5 13c-1.92 0-3.703.523-5.053 1.42l1.107 1.666C11.539 15.431 12.928 15 14.5 15v-2z" }, null, -1);
-const _hoisted_3$5 = [
-  _hoisted_2$6
-];
-function _sfc_render$4(_ctx, _cache) {
-  return openBlock(), createElementBlock("svg", _hoisted_1$6, _hoisted_3$5);
-}
-const DocumentationIcon = /* @__PURE__ */ _export_sfc(_sfc_main$6, [["render", _sfc_render$4]]);
-const _sfc_main$5 = {};
-const _hoisted_1$5 = {
-  xmlns: "http://www.w3.org/2000/svg",
-  "xmlns:xlink": "http://www.w3.org/1999/xlink",
-  "aria-hidden": "true",
-  role: "img",
-  class: "iconify iconify--mdi",
-  width: "24",
-  height: "24",
-  preserveAspectRatio: "xMidYMid meet",
-  viewBox: "0 0 24 24"
-};
-const _hoisted_2$5 = /* @__PURE__ */ createBaseVNode("path", {
-  d: "M20 18v-4h-3v1h-2v-1H9v1H7v-1H4v4h16M6.33 8l-1.74 4H7v-1h2v1h6v-1h2v1h2.41l-1.74-4H6.33M9 5v1h6V5H9m12.84 7.61c.1.22.16.48.16.8V18c0 .53-.21 1-.6 1.41c-.4.4-.85.59-1.4.59H4c-.55 0-1-.19-1.4-.59C2.21 19 2 18.53 2 18v-4.59c0-.32.06-.58.16-.8L4.5 7.22C4.84 6.41 5.45 6 6.33 6H7V5c0-.55.18-1 .57-1.41C7.96 3.2 8.44 3 9 3h6c.56 0 1.04.2 1.43.59c.39.41.57.86.57 1.41v1h.67c.88 0 1.49.41 1.83 1.22l2.34 5.39z",
-  fill: "currentColor"
-}, null, -1);
-const _hoisted_3$4 = [
-  _hoisted_2$5
-];
-function _sfc_render$3(_ctx, _cache) {
-  return openBlock(), createElementBlock("svg", _hoisted_1$5, _hoisted_3$4);
-}
-const ToolingIcon = /* @__PURE__ */ _export_sfc(_sfc_main$5, [["render", _sfc_render$3]]);
-const _sfc_main$4 = {};
-const _hoisted_1$4 = {
-  xmlns: "http://www.w3.org/2000/svg",
-  width: "18",
-  height: "20",
-  fill: "currentColor"
-};
-const _hoisted_2$4 = /* @__PURE__ */ createBaseVNode("path", { d: "M11.447 8.894a1 1 0 1 0-.894-1.789l.894 1.789zm-2.894-.789a1 1 0 1 0 .894 1.789l-.894-1.789zm0 1.789a1 1 0 1 0 .894-1.789l-.894 1.789zM7.447 7.106a1 1 0 1 0-.894 1.789l.894-1.789zM10 9a1 1 0 1 0-2 0h2zm-2 2.5a1 1 0 1 0 2 0H8zm9.447-5.606a1 1 0 1 0-.894-1.789l.894 1.789zm-2.894-.789a1 1 0 1 0 .894 1.789l-.894-1.789zm2 .789a1 1 0 1 0 .894-1.789l-.894 1.789zm-1.106-2.789a1 1 0 1 0-.894 1.789l.894-1.789zM18 5a1 1 0 1 0-2 0h2zm-2 2.5a1 1 0 1 0 2 0h-2zm-5.447-4.606a1 1 0 1 0 .894-1.789l-.894 1.789zM9 1l.447-.894a1 1 0 0 0-.894 0L9 1zm-2.447.106a1 1 0 1 0 .894 1.789l-.894-1.789zm-6 3a1 1 0 1 0 .894 1.789L.553 4.106zm2.894.789a1 1 0 1 0-.894-1.789l.894 1.789zm-2-.789a1 1 0 1 0-.894 1.789l.894-1.789zm1.106 2.789a1 1 0 1 0 .894-1.789l-.894 1.789zM2 5a1 1 0 1 0-2 0h2zM0 7.5a1 1 0 1 0 2 0H0zm8.553 12.394a1 1 0 1 0 .894-1.789l-.894 1.789zm-1.106-2.789a1 1 0 1 0-.894 1.789l.894-1.789zm1.106 1a1 1 0 1 0 .894 1.789l-.894-1.789zm2.894.789a1 1 0 1 0-.894-1.789l.894 1.789zM8 19a1 1 0 1 0 2 0H8zm2-2.5a1 1 0 1 0-2 0h2zm-7.447.394a1 1 0 1 0 .894-1.789l-.894 1.789zM1 15H0a1 1 0 0 0 .553.894L1 15zm1-2.5a1 1 0 1 0-2 0h2zm12.553 2.606a1 1 0 1 0 .894 1.789l-.894-1.789zM17 15l.447.894A1 1 0 0 0 18 15h-1zm1-2.5a1 1 0 1 0-2 0h2zm-7.447-5.394l-2 1 .894 1.789 2-1-.894-1.789zm-1.106 1l-2-1-.894 1.789 2 1 .894-1.789zM8 9v2.5h2V9H8zm8.553-4.894l-2 1 .894 1.789 2-1-.894-1.789zm.894 0l-2-1-.894 1.789 2 1 .894-1.789zM16 5v2.5h2V5h-2zm-4.553-3.894l-2-1-.894 1.789 2 1 .894-1.789zm-2.894-1l-2 1 .894 1.789 2-1L8.553.106zM1.447 5.894l2-1-.894-1.789-2 1 .894 1.789zm-.894 0l2 1 .894-1.789-2-1-.894 1.789zM0 5v2.5h2V5H0zm9.447 13.106l-2-1-.894 1.789 2 1 .894-1.789zm0 1.789l2-1-.894-1.789-2 1 .894 1.789zM10 19v-2.5H8V19h2zm-6.553-3.894l-2-1-.894 1.789 2 1 .894-1.789zM2 15v-2.5H0V15h2zm13.447 1.894l2-1-.894-1.789-2 1 .894 1.789zM18 15v-2.5h-2V15h2z" }, null, -1);
-const _hoisted_3$3 = [
-  _hoisted_2$4
-];
-function _sfc_render$2(_ctx, _cache) {
-  return openBlock(), createElementBlock("svg", _hoisted_1$4, _hoisted_3$3);
-}
-const EcosystemIcon = /* @__PURE__ */ _export_sfc(_sfc_main$4, [["render", _sfc_render$2]]);
-const _sfc_main$3 = {};
-const _hoisted_1$3 = {
-  xmlns: "http://www.w3.org/2000/svg",
-  width: "20",
-  height: "20",
-  fill: "currentColor"
-};
-const _hoisted_2$3 = /* @__PURE__ */ createBaseVNode("path", { d: "M15 4a1 1 0 1 0 0 2V4zm0 11v-1a1 1 0 0 0-1 1h1zm0 4l-.707.707A1 1 0 0 0 16 19h-1zm-4-4l.707-.707A1 1 0 0 0 11 14v1zm-4.707-1.293a1 1 0 0 0-1.414 1.414l1.414-1.414zm-.707.707l-.707-.707.707.707zM9 11v-1a1 1 0 0 0-.707.293L9 11zm-4 0h1a1 1 0 0 0-1-1v1zm0 4H4a1 1 0 0 0 1.707.707L5 15zm10-9h2V4h-2v2zm2 0a1 1 0 0 1 1 1h2a3 3 0 0 0-3-3v2zm1 1v6h2V7h-2zm0 6a1 1 0 0 1-1 1v2a3 3 0 0 0 3-3h-2zm-1 1h-2v2h2v-2zm-3 1v4h2v-4h-2zm1.707 3.293l-4-4-1.414 1.414 4 4 1.414-1.414zM11 14H7v2h4v-2zm-4 0c-.276 0-.525-.111-.707-.293l-1.414 1.414C5.42 15.663 6.172 16 7 16v-2zm-.707 1.121l3.414-3.414-1.414-1.414-3.414 3.414 1.414 1.414zM9 12h4v-2H9v2zm4 0a3 3 0 0 0 3-3h-2a1 1 0 0 1-1 1v2zm3-3V3h-2v6h2zm0-6a3 3 0 0 0-3-3v2a1 1 0 0 1 1 1h2zm-3-3H3v2h10V0zM3 0a3 3 0 0 0-3 3h2a1 1 0 0 1 1-1V0zM0 3v6h2V3H0zm0 6a3 3 0 0 0 3 3v-2a1 1 0 0 1-1-1H0zm3 3h2v-2H3v2zm1-1v4h2v-4H4zm1.707 4.707l.586-.586-1.414-1.414-.586.586 1.414 1.414z" }, null, -1);
-const _hoisted_3$2 = [
-  _hoisted_2$3
-];
-function _sfc_render$1(_ctx, _cache) {
-  return openBlock(), createElementBlock("svg", _hoisted_1$3, _hoisted_3$2);
-}
-const CommunityIcon = /* @__PURE__ */ _export_sfc(_sfc_main$3, [["render", _sfc_render$1]]);
-const _sfc_main$2 = {};
-const _hoisted_1$2 = {
-  xmlns: "http://www.w3.org/2000/svg",
-  width: "20",
-  height: "20",
-  fill: "currentColor"
-};
-const _hoisted_2$2 = /* @__PURE__ */ createBaseVNode("path", { d: "M10 3.22l-.61-.6a5.5 5.5 0 0 0-7.666.105 5.5 5.5 0 0 0-.114 7.665L10 18.78l8.39-8.4a5.5 5.5 0 0 0-.114-7.665 5.5 5.5 0 0 0-7.666-.105l-.61.61z" }, null, -1);
-const _hoisted_3$1 = [
-  _hoisted_2$2
-];
-function _sfc_render(_ctx, _cache) {
-  return openBlock(), createElementBlock("svg", _hoisted_1$2, _hoisted_3$1);
-}
-const SupportIcon = /* @__PURE__ */ _export_sfc(_sfc_main$2, [["render", _sfc_render]]);
-const _hoisted_1$1 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://vuejs.org/",
-  target: "_blank",
-  rel: "noopener"
-}, "official documentation", -1);
-const _hoisted_2$1 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://vitejs.dev/guide/features.html",
-  target: "_blank",
-  rel: "noopener"
-}, "Vite", -1);
-const _hoisted_3 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://code.visualstudio.com/",
-  target: "_blank",
-  rel: "noopener"
-}, "VSCode", -1);
-const _hoisted_4 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://github.com/johnsoncodehk/volar",
-  target: "_blank",
-  rel: "noopener"
-}, "Volar", -1);
-const _hoisted_5 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://www.cypress.io/",
-  target: "_blank",
-  rel: "noopener"
-}, "Cypress", -1);
-const _hoisted_6 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://on.cypress.io/component",
-  target: "_blank"
-}, "Cypress Component Testing", -1);
-const _hoisted_7 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
-const _hoisted_8 = /* @__PURE__ */ createBaseVNode("code", null, "README.md", -1);
-const _hoisted_9 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://pinia.vuejs.org/",
-  target: "_blank",
-  rel: "noopener"
-}, "Pinia", -1);
-const _hoisted_10 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://router.vuejs.org/",
-  target: "_blank",
-  rel: "noopener"
-}, "Vue Router", -1);
-const _hoisted_11 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://test-utils.vuejs.org/",
-  target: "_blank",
-  rel: "noopener"
-}, "Vue Test Utils", -1);
-const _hoisted_12 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://github.com/vuejs/devtools",
-  target: "_blank",
-  rel: "noopener"
-}, "Vue Dev Tools", -1);
-const _hoisted_13 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://github.com/vuejs/awesome-vue",
-  target: "_blank",
-  rel: "noopener"
-}, "Awesome Vue", -1);
-const _hoisted_14 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://chat.vuejs.org",
-  target: "_blank",
-  rel: "noopener"
-}, "Vue Land", -1);
-const _hoisted_15 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://stackoverflow.com/questions/tagged/vue.js",
-  target: "_blank",
-  rel: "noopener"
-}, "StackOverflow", -1);
-const _hoisted_16 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://news.vuejs.org",
-  target: "_blank",
-  rel: "noopener"
-}, "our mailing list", -1);
-const _hoisted_17 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://twitter.com/vuejs",
-  target: "_blank",
-  rel: "noopener"
-}, "@vuejs", -1);
-const _hoisted_18 = /* @__PURE__ */ createBaseVNode("a", {
-  href: "https://vuejs.org/sponsor/",
-  target: "_blank",
-  rel: "noopener"
-}, "becoming a sponsor", -1);
-const _sfc_main$1 = {
-  __name: "TheWelcome",
-  setup(__props) {
-    return (_ctx, _cache) => {
-      return openBlock(), createElementBlock(Fragment, null, [
-        createVNode(WelcomeItem, null, {
-          icon: withCtx(() => [
-            createVNode(DocumentationIcon)
-          ]),
-          heading: withCtx(() => [
-            createTextVNode("Documentation")
-          ]),
-          default: withCtx(() => [
-            createTextVNode(" Vue’s "),
-            _hoisted_1$1,
-            createTextVNode(" provides you with all information you need to get started. ")
-          ]),
-          _: 1
-        }),
-        createVNode(WelcomeItem, null, {
-          icon: withCtx(() => [
-            createVNode(ToolingIcon)
-          ]),
-          heading: withCtx(() => [
-            createTextVNode("Tooling")
-          ]),
-          default: withCtx(() => [
-            createTextVNode(" This project is served and bundled with "),
-            _hoisted_2$1,
-            createTextVNode(". The recommended IDE setup is "),
-            _hoisted_3,
-            createTextVNode(" + "),
-            _hoisted_4,
-            createTextVNode(". If you need to test your components and web pages, check out "),
-            _hoisted_5,
-            createTextVNode(" and "),
-            _hoisted_6,
-            createTextVNode(". "),
-            _hoisted_7,
-            createTextVNode(" More instructions are available in "),
-            _hoisted_8,
-            createTextVNode(". ")
-          ]),
-          _: 1
-        }),
-        createVNode(WelcomeItem, null, {
-          icon: withCtx(() => [
-            createVNode(EcosystemIcon)
-          ]),
-          heading: withCtx(() => [
-            createTextVNode("Ecosystem")
-          ]),
-          default: withCtx(() => [
-            createTextVNode(" Get official tools and libraries for your project: "),
-            _hoisted_9,
-            createTextVNode(", "),
-            _hoisted_10,
-            createTextVNode(", "),
-            _hoisted_11,
-            createTextVNode(", and "),
-            _hoisted_12,
-            createTextVNode(". If you need more resources, we suggest paying "),
-            _hoisted_13,
-            createTextVNode(" a visit. ")
-          ]),
-          _: 1
-        }),
-        createVNode(WelcomeItem, null, {
-          icon: withCtx(() => [
-            createVNode(CommunityIcon)
-          ]),
-          heading: withCtx(() => [
-            createTextVNode("Community")
-          ]),
-          default: withCtx(() => [
-            createTextVNode(" Got stuck? Ask your question on "),
-            _hoisted_14,
-            createTextVNode(", our official Discord server, or "),
-            _hoisted_15,
-            createTextVNode(". You should also subscribe to "),
-            _hoisted_16,
-            createTextVNode(" and follow the official "),
-            _hoisted_17,
-            createTextVNode(" twitter account for latest news in the Vue world. ")
-          ]),
-          _: 1
-        }),
-        createVNode(WelcomeItem, null, {
-          icon: withCtx(() => [
-            createVNode(SupportIcon)
-          ]),
-          heading: withCtx(() => [
-            createTextVNode("Support Vue")
-          ]),
-          default: withCtx(() => [
-            createTextVNode(" As an independent project, Vue relies on community backing for its sustainability. You can help us by "),
-            _hoisted_18,
-            createTextVNode(". ")
-          ]),
-          _: 1
-        })
-      ], 64);
-    };
-  }
-};
-const App_vue_vue_type_style_index_0_scoped_7f576311_lang = "";
-const _withScopeId = (n) => (pushScopeId("data-v-7f576311"), n = n(), popScopeId(), n);
-const _hoisted_1 = /* @__PURE__ */ _withScopeId(() => /* @__PURE__ */ createBaseVNode("img", {
-  alt: "Vue logo",
-  class: "logo",
-  src: _imports_0,
-  width: "125",
-  height: "125"
-}, null, -1));
-const _hoisted_2 = { class: "wrapper" };
-const _sfc_main = {
-  __name: "App",
-  setup(__props) {
-    return (_ctx, _cache) => {
-      return openBlock(), createElementBlock(Fragment, null, [
-        createBaseVNode("header", null, [
-          _hoisted_1,
-          createBaseVNode("div", _hoisted_2, [
-            createVNode(HelloWorld, { msg: "You did it!" })
-          ])
-        ]),
-        createBaseVNode("main", null, [
-          createVNode(_sfc_main$1)
-        ])
-      ], 64);
-    };
-  }
-};
-const App = /* @__PURE__ */ _export_sfc(_sfc_main, [["__scopeId", "data-v-7f576311"]]);
 const main = "";
-createApp(App).mount("#app");
+createApp(_sfc_main).mount("#app");
