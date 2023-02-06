@@ -5251,7 +5251,7 @@ const _sfc_main = {
       city: "",
       zip: ""
     });
-    ref("shirtGreen.PNG");
+    const shirtGreenImg = ref("shirtGreen.PNG");
     const shirtOrangeImg = ref("shirtOrange.PNG");
     const shirtBlueImg = ref("shirtBlue.PNG");
     return (_ctx, _cache) => {
@@ -5300,7 +5300,7 @@ const _sfc_main = {
                 onInput: _cache[3] || (_cache[3] = (event) => user.model = event.target.value),
                 required: ""
               }, null, 32),
-              createBaseVNode("img", { src: _ctx.tshirtGreenImg }, null, 8, _hoisted_8),
+              createBaseVNode("img", { src: shirtGreenImg.value }, null, 8, _hoisted_8),
               withDirectives(createBaseVNode("input", {
                 id: "tshirtOrange",
                 name: "tshirt",
