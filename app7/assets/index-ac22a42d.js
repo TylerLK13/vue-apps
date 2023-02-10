@@ -5539,14 +5539,22 @@ const _sfc_main = {
       if (index < 2) {
         index++;
         console.log("Pic index: ", index);
+        document.querySelector("#buttonPrev").disabled = false;
         loadImage();
+        if (index == 2) {
+          document.querySelector("#buttonNext").disabled = true;
+        }
       }
     }
     function prevImg() {
       if (index > 0) {
         index--;
+        document.querySelector("#buttonNext").disabled = false;
         console.log("Pic index: ", index);
         loadImage();
+        if (index == 0) {
+          document.querySelector("#buttonPrev").disabled = true;
+        }
       }
     }
     loadImage();
