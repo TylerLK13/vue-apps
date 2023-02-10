@@ -1,0 +1,42 @@
+
+html{
+  background-image: linear-gradient(rgb(255, 255, 255), rgb(158, 158, 158));
+  background-attachment: fixed;
+  font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+}
+input[type=button]{
+  border-color: rgb(0, 0, 0);
+  border-width: 3px;
+  border-radius: 100px;
+  border-style: solid;
+  padding: px;
+  background-color: rgb(196, 196, 196);
+  font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+  font-size: 20px;
+  margin-bottom: 5px;
+}
+#buttonNext{
+  float: right;
+  margin-right: 200px;
+}
+#buttonPrev{
+  float: left;
+  margin-left: 200px;
+}
+#photoUrl{
+  text-align: center;
+}
+h1{
+  text-align: center;
+}
+img{
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 40%;
+  height: 40%;
+
+  border-color: black;
+  border-style: solid;
+  border-width: 5px;
+}
