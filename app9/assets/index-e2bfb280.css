@@ -1,0 +1,26 @@
+
+audio{
+  margin: 4px;
+  max-width: 100px;
+  max-height: 32px;  
+  visibility: hidden;
+}
+audio::-webkit-media-controls-play-button{
+  visibility: visible;
+  background-color: rgb(152, 152, 152);
+  border-radius: 100px;
+}
+#mp3Player{
+  border-width: 3px;
+  border-radius: 20px;
+  border-color: black;
+  border-style: solid;
+  padding: 14px;
+  font-family:'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+  width: 450px;
+}
+h3{
+  text-align: center;
+}
+
+

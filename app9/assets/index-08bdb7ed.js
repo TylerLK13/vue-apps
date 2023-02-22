@@ -2206,9 +2206,9 @@ function invokeDirectiveHook(vnode, prevVNode, instance, name) {
   }
 }
 const NULL_DYNAMIC_COMPONENT = Symbol();
-function renderList(source, renderItem, cache, index2) {
+function renderList(source, renderItem, cache, index) {
   let ret;
-  const cached = cache && cache[index2];
+  const cached = cache && cache[index];
   if (isArray(source) || isString(source)) {
     ret = new Array(source.length);
     for (let i = 0, l = source.length; i < l; i++) {
@@ -2234,7 +2234,7 @@ function renderList(source, renderItem, cache, index2) {
     ret = [];
   }
   if (cache) {
-    cache[index2] = ret;
+    cache[index] = ret;
   }
   return ret;
 }
@@ -5068,117 +5068,133 @@ const songs = [
 const json = {
   songs
 };
-const _export_sfc = (sfc, props) => {
-  const target = sfc.__vccOpts || sfc;
-  for (const [key, val] of props) {
-    target[key] = val;
-  }
-  return target;
-};
-let index = 0;
-const _sfc_main$1 = {
-  data() {
-    return {
-      myJson: json,
-      props: {
-        test: "test text",
-        mp3File: json.songs[index].audio
-        //mp3File: "./rdr ost/Red Dead Redemption 2 Soundtrack - See The Fire In Your Eyes.mp3"
-      }
-    };
-  },
-  methods: {
-    loadSong() {
-      console.log("loading song");
-    },
-    nextSong() {
-      console.log("next song");
-      if (index < 8) {
-        index++;
-        console.log(index);
-      }
-    },
-    lastSong() {
-      console.log("last song");
-      if (index > 0) {
-        index--;
-        console.log(index);
-      }
-    }
-  }
-};
+const music_vue_vue_type_style_index_0_lang = "";
 const _hoisted_1 = /* @__PURE__ */ createBaseVNode("h1", null, "App 9", -1);
 const _hoisted_2 = { id: "mp3Player" };
 const _hoisted_3 = { id: "playlist" };
-const _hoisted_4 = /* @__PURE__ */ createBaseVNode("h2", null, "Playlist", -1);
-const _hoisted_5 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_4 = /* @__PURE__ */ createBaseVNode("h3", null, "MP3 Player (Red Dead Redemption OST)", -1);
+const _hoisted_5 = ["src"];
 const _hoisted_6 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
-const _hoisted_7 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_7 = ["src"];
 const _hoisted_8 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
-const _hoisted_9 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_9 = ["src"];
 const _hoisted_10 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
-const _hoisted_11 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_11 = ["src"];
 const _hoisted_12 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
-const _hoisted_13 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_13 = ["src"];
 const _hoisted_14 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
 const _hoisted_15 = ["src"];
-function _sfc_render(_ctx, _cache, $props, $setup, $data, $options) {
-  return openBlock(), createElementBlock("body", null, [
-    _hoisted_1,
-    createBaseVNode("div", _hoisted_2, [
-      (openBlock(true), createElementBlock(Fragment, null, renderList($data.myJson, (songs2) => {
-        return openBlock(), createElementBlock("span", _hoisted_3, [
-          _hoisted_4,
-          createTextVNode(" " + toDisplayString(songs2[0].title) + " - " + toDisplayString(songs2[0].time) + " ", 1),
-          _hoisted_5,
-          createTextVNode(" " + toDisplayString(songs2[1].title) + " - " + toDisplayString(songs2[1].time) + " ", 1),
-          _hoisted_6,
-          createTextVNode(" " + toDisplayString(songs2[2].title) + " - " + toDisplayString(songs2[2].time) + " ", 1),
-          _hoisted_7,
-          createTextVNode(" " + toDisplayString(songs2[3].title) + " - " + toDisplayString(songs2[3].time) + " ", 1),
-          _hoisted_8,
-          createTextVNode(" " + toDisplayString(songs2[4].title) + " - " + toDisplayString(songs2[4].time) + " ", 1),
-          _hoisted_9,
-          createTextVNode(" " + toDisplayString(songs2[5].title) + " - " + toDisplayString(songs2[5].time) + " ", 1),
-          _hoisted_10,
-          createTextVNode(" " + toDisplayString(songs2[6].title) + " - " + toDisplayString(songs2[6].time) + " ", 1),
-          _hoisted_11,
-          createTextVNode(" " + toDisplayString(songs2[7].title) + " - " + toDisplayString(songs2[7].time) + " ", 1),
-          _hoisted_12,
-          createTextVNode(" " + toDisplayString(songs2[8].title) + " - " + toDisplayString(songs2[8].time) + " ", 1),
-          _hoisted_13
-        ]);
-      }), 256)),
-      _hoisted_14,
-      createBaseVNode("span", mergeProps({ id: "audioPlayer" }, $data.props), [
-        createBaseVNode("audio", {
-          src: $data.props.mp3File,
-          type: "audio/mpeg",
-          controls: ""
-        }, null, 8, _hoisted_15),
-        createBaseVNode("input", {
-          id: "btnPrev",
-          type: "button",
-          value: "Previous Song",
-          onClick: _cache[0] || (_cache[0] = (...args) => $options.lastSong && $options.lastSong(...args))
-        }),
-        createBaseVNode("input", {
-          id: "btnNext",
-          type: "button",
-          value: "Next Song",
-          onClick: _cache[1] || (_cache[1] = (...args) => $options.nextSong && $options.nextSong(...args))
-        })
-      ], 16)
-    ])
-  ]);
-}
-const mp3Player = /* @__PURE__ */ _export_sfc(_sfc_main$1, [["render", _sfc_render]]);
+const _hoisted_16 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_17 = ["src"];
+const _hoisted_18 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_19 = ["src"];
+const _hoisted_20 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_21 = ["src"];
+const _hoisted_22 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _hoisted_23 = /* @__PURE__ */ createBaseVNode("br", null, null, -1);
+const _sfc_main$1 = {
+  __name: "music",
+  setup(__props) {
+    let index = 0;
+    let myJson = json;
+    let props = {
+      test: "test text",
+      mp3File: json.songs[index].audio,
+      mp3File0: json.songs[0].audio,
+      mp3File1: json.songs[1].audio,
+      mp3File2: json.songs[2].audio,
+      mp3File3: json.songs[3].audio,
+      mp3File4: json.songs[4].audio,
+      mp3File5: json.songs[5].audio,
+      mp3File6: json.songs[6].audio,
+      mp3File7: json.songs[7].audio,
+      mp3File8: json.songs[8].audio
+      //mp3File: "./rdr ost/Red Dead Redemption 2 Soundtrack - See The Fire In Your Eyes.mp3"
+    };
+    return (_ctx, _cache) => {
+      return openBlock(), createElementBlock("body", null, [
+        _hoisted_1,
+        createBaseVNode("div", _hoisted_2, [
+          (openBlock(true), createElementBlock(Fragment, null, renderList(unref(myJson), (songs2) => {
+            return openBlock(), createElementBlock("span", _hoisted_3, [
+              _hoisted_4,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File0,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_5),
+              createTextVNode(toDisplayString(songs2[0].title) + " - " + toDisplayString(songs2[0].time) + " ", 1),
+              _hoisted_6,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File1,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_7),
+              createTextVNode(toDisplayString(songs2[1].title) + " - " + toDisplayString(songs2[1].time) + " ", 1),
+              _hoisted_8,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File2,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_9),
+              createTextVNode(toDisplayString(songs2[2].title) + " - " + toDisplayString(songs2[2].time) + " ", 1),
+              _hoisted_10,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File3,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_11),
+              createTextVNode(toDisplayString(songs2[3].title) + " - " + toDisplayString(songs2[3].time) + " ", 1),
+              _hoisted_12,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File4,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_13),
+              createTextVNode(toDisplayString(songs2[4].title) + " - " + toDisplayString(songs2[4].time) + " ", 1),
+              _hoisted_14,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File5,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_15),
+              createTextVNode(toDisplayString(songs2[5].title) + " - " + toDisplayString(songs2[5].time) + " ", 1),
+              _hoisted_16,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File6,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_17),
+              createTextVNode(toDisplayString(songs2[6].title) + " - " + toDisplayString(songs2[6].time) + " ", 1),
+              _hoisted_18,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File7,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_19),
+              createTextVNode(toDisplayString(songs2[7].title) + " - " + toDisplayString(songs2[7].time) + " ", 1),
+              _hoisted_20,
+              createBaseVNode("audio", {
+                src: unref(props).mp3File8,
+                type: "audio/mpeg",
+                controls: ""
+              }, null, 8, _hoisted_21),
+              createTextVNode(toDisplayString(songs2[8].title) + " - " + toDisplayString(songs2[8].time) + " ", 1),
+              _hoisted_22
+            ]);
+          }), 256)),
+          _hoisted_23
+        ])
+      ]);
+    };
+  }
+};
 const _sfc_main = {
   __name: "App",
   setup(__props) {
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("body", null, [
-        createVNode(mp3Player)
+        createVNode(_sfc_main$1)
       ]);
     };
   }
