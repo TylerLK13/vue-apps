@@ -1,0 +1,52 @@
+
+nav{
+    display: flex;
+    justify-content: space-evenly;
+}
+
+body{
+  font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+}
+#title{
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+
+  background-color: black;
+  color:antiquewhite;
+  padding-left: 10px;
+}
+#subtitle{
+  color:rgb(255, 168, 80);
+  padding-left: 5px;
+}
+#Navbar{
+  border-color: black;
+  border-style: solid;
+  border-radius: 4px;
+  border-width: 3px;
+  padding: 10px;
+}
+
+#infoContainer{
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: column;
+
+  border-width: 2px;
+  border-style: solid;
+  border-radius: 3px;
+  padding: 12px;
+  width: 300px;
+}
+
+
+input{
+    padding: 2px;
+    margin: 1px;
+}
+button{
+    margin: 14px;
+    padding: 3px;
+}
+
