@@ -6856,11 +6856,17 @@ function extractChangingRecords(to, from) {
   }
   return [leavingRecords, updatingRecords, enteringRecords];
 }
+function useRouter() {
+  return inject(routerKey);
+}
 const App_vue_vue_type_style_index_0_lang = "";
 const _hoisted_1$6 = { id: "gridContainer" };
 const _sfc_main$6 = {
   __name: "App",
   setup(__props) {
+    const router2 = useRouter();
+    console.log("test");
+    router2.replace({ path: "/" });
     return (_ctx, _cache) => {
       return openBlock(), createElementBlock("main", _hoisted_1$6, [
         createVNode(unref(RouterView), {
